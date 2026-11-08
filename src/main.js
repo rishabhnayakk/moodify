@@ -17,8 +17,7 @@ let currentMood = "Happy";
 let paused = false;
 let density = "Normal";
 
-function createOverlays() {
-  for (const display of screen.getAllDisplays()) {
+function createOverlay(display) {
     const win = new BrowserWindow({
       x: display.bounds.x,
       y: display.bounds.y,
@@ -54,7 +53,10 @@ function createOverlays() {
     });
     win.on("closed", () => { overlays = overlays.filter(item => item !== win); });
     overlays.push(win);
-  }
+}
+
+function createOverlays() {
+  for (const display of screen.getAllDisplays()) createOverlay(display);
 }
 
 function broadcast() {
@@ -110,7 +112,7 @@ app.whenReady().then(() => {
     buildTrayMenu();
   });
 
-  screen.on("display-added", createOverlays);
+  screen.on("display-added", (_event, display) => createOverlay(display));
   screen.on("display-removed", () => {
     for (const win of overlays) if (!win.isDestroyed()) win.close();
     overlays = [];
@@ -119,4 +121,4 @@ app.whenReady().then(() => {
 });
 
 app.on("will-quit", () => globalShortcut.unregisterAll());
-app.on("window-all-closed", (event) => event.preventDefault());
+app.on("window-all-closed", () => {});
