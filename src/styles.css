@@ -1,0 +1,36 @@
+* { box-sizing: border-box; }
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+body { pointer-events: none; }
+#rain {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.emoji {
+  position: absolute;
+  top: -12vh;
+  left: var(--x);
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  font-size: var(--size);
+  line-height: 1;
+  opacity: var(--opacity);
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,.12));
+  will-change: transform;
+  animation: fall var(--duration) linear var(--delay) forwards;
+}
+@keyframes fall {
+  0% { transform: translate3d(0, -5vh, 0) rotate(0deg); }
+  25% { transform: translate3d(var(--sway), 25vh, 0) rotate(85deg); }
+  55% { transform: translate3d(calc(var(--sway) * -0.6), 60vh, 0) rotate(190deg); }
+  100% { transform: translate3d(var(--sway), 115vh, 0) rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .emoji { animation-duration: calc(var(--duration) * 1.8); }
+}
