@@ -9,6 +9,9 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
   "devDependencies": {
     "electron": "^35.0.0",
     "electron-builder": "^26.0.12"
