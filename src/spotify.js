@@ -45,8 +45,7 @@ async function refreshAccessToken() {
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Token refresh failed (${res.status}): ${text}`);
+    throw new Error(`Token refresh failed (${res.status})`);
   }
 
   const data = await res.json();
@@ -112,7 +111,10 @@ function hasCredentials() {
 }
 
 async function searchPlaylists(mood, limit = 6) {
-  const q   = encodeURIComponent(MOOD_QUERIES[mood] || mood);
+  if (!Object.prototype.hasOwnProperty.call(MOOD_QUERIES, mood)) {
+    throw new Error("Invalid mood");
+  }
+  const q   = encodeURIComponent(MOOD_QUERIES[mood]);
   const data = await apiGet(`/search?q=${q}&type=playlist&limit=${limit}`);
   return (data?.playlists?.items ?? []).filter(Boolean).map(p => ({
     id:     p.id,
@@ -139,7 +141,12 @@ async function getCurrentTrack() {
   };
 }
 
-async function playPlaylist(uri)   { await apiPut("/me/player/play", { context_uri: uri }); }
+async function playPlaylist(uri) {
+  if (typeof uri !== "string" || !/^spotify:playlist:[A-Za-z0-9]+$/.test(uri)) {
+    throw new Error("Invalid Spotify playlist identifier");
+  }
+  await apiPut("/me/player/play", { context_uri: uri });
+}
 async function pausePlayback()     { await apiPut("/me/player/pause"); }
 async function resumePlayback()    { await apiPut("/me/player/play"); }
 async function nextTrack()         { await apiPost("/me/player/next"); }
