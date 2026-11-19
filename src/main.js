@@ -157,10 +157,23 @@ function buildTrayMenu() {
 }
 
 function createTray() {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><text x="2" y="26" font-size="26">😊</text></svg>';
-  tray = new Tray(nativeImage.createFromDataURL(
-    "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64")
-  ));
+  // Electron's nativeImage decoder supports PNG/JPEG, not SVG. Use a native
+  // macOS SF Symbol so the menu-bar icon is valid and adapts to light/dark mode.
+  let icon = nativeImage.createFromNamedImage("face.smiling", {
+    pointSize: 18,
+    weight: "medium",
+  });
+
+  if (!icon.isEmpty()) {
+    icon.setTemplateImage(true);
+  } else {
+    // Valid 16x16 PNG fallback in case the SF Symbol is unavailable.
+    icon = nativeImage.createFromDataURL(
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII="
+    );
+  }
+
+  tray = new Tray(icon);
   tray.setToolTip("Moodify — mood-based emoji rain");
   buildTrayMenu();
 }
