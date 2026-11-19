@@ -3,9 +3,10 @@ require("dotenv").config({ path: require("node:path").join(__dirname, "../.env")
 
 const {
   app, BrowserWindow, Tray, Menu, screen,
-  nativeImage, globalShortcut, ipcMain, shell,
+  nativeImage, globalShortcut, ipcMain, shell, session,
 } = require("electron");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const spotify = require("./spotify");
 
 const MOODS = {
@@ -24,6 +25,32 @@ let musicPanel  = null;
 let currentMood = "Happy";
 let paused      = false;
 let density     = "Normal";
+
+// Renderer windows only load their own local HTML file. Block navigation,
+// popups and embedded webviews so renderer content cannot escape this boundary.
+function hardenWindow(win, pageName) {
+  const trustedUrl = pathToFileURL(path.join(__dirname, pageName)).href;
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url !== trustedUrl) event.preventDefault();
+  });
+  win.webContents.on("will-attach-webview", event => event.preventDefault());
+}
+
+function isTrustedPanelSender(event) {
+  return !!(
+    musicPanel &&
+    !musicPanel.isDestroyed() &&
+    event.sender === musicPanel.webContents &&
+    event.senderFrame?.url === pathToFileURL(path.join(__dirname, "panel.html")).href
+  );
+}
+
+function assertTrustedPanelSender(event) {
+  if (!isTrustedPanelSender(event)) {
+    throw new Error("Blocked IPC request from an untrusted renderer");
+  }
+}
 
 // ── Emoji overlay windows ─────────────────────────────────────────────────────
 
@@ -53,6 +80,7 @@ function createOverlay(display) {
     },
   });
 
+  hardenWindow(win, "index.html");
   win.setAlwaysOnTop(true, "screen-saver");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true);
@@ -102,6 +130,7 @@ function createMusicPanel() {
     },
   });
 
+  hardenWindow(musicPanel, "panel.html");
   musicPanel.setAlwaysOnTop(true, "floating");
   musicPanel.loadFile(path.join(__dirname, "panel.html"));
   musicPanel.on("closed", () => { musicPanel = null; });
@@ -181,16 +210,50 @@ function createTray() {
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 
 function setupIpc() {
-  ipcMain.handle("spotify:has-credentials",  ()         => spotify.hasCredentials());
-  ipcMain.handle("spotify:get-playlists",    (_e, mood) => spotify.searchPlaylists(mood));
-  ipcMain.handle("spotify:get-track",        ()         => spotify.getCurrentTrack());
-  ipcMain.handle("spotify:play-playlist",    (_e, uri)  => spotify.playPlaylist(uri));
-  ipcMain.handle("spotify:pause",            ()         => spotify.pausePlayback());
-  ipcMain.handle("spotify:resume",           ()         => spotify.resumePlayback());
-  ipcMain.handle("spotify:next",             ()         => spotify.nextTrack());
-  ipcMain.handle("spotify:prev",             ()         => spotify.prevTrack());
-  ipcMain.handle("shell:open-external",      (_e, url)  => shell.openExternal(url));
-  ipcMain.on("panel:close", () => {
+  ipcMain.handle("spotify:has-credentials", event => {
+    assertTrustedPanelSender(event);
+    return spotify.hasCredentials();
+  });
+  ipcMain.handle("spotify:get-playlists", (event, mood) => {
+    assertTrustedPanelSender(event);
+    return spotify.searchPlaylists(mood);
+  });
+  ipcMain.handle("spotify:get-track", event => {
+    assertTrustedPanelSender(event);
+    return spotify.getCurrentTrack();
+  });
+  ipcMain.handle("spotify:play-playlist", (event, uri) => {
+    assertTrustedPanelSender(event);
+    if (typeof uri !== "string" || !/^spotify:playlist:[A-Za-z0-9]+$/.test(uri)) {
+      throw new Error("Invalid Spotify playlist identifier");
+    }
+    return spotify.playPlaylist(uri);
+  });
+  ipcMain.handle("spotify:pause", event => {
+    assertTrustedPanelSender(event);
+    return spotify.pausePlayback();
+  });
+  ipcMain.handle("spotify:resume", event => {
+    assertTrustedPanelSender(event);
+    return spotify.resumePlayback();
+  });
+  ipcMain.handle("spotify:next", event => {
+    assertTrustedPanelSender(event);
+    return spotify.nextTrack();
+  });
+  ipcMain.handle("spotify:prev", event => {
+    assertTrustedPanelSender(event);
+    return spotify.prevTrack();
+  });
+  ipcMain.handle("shell:open-external", (event, url) => {
+    assertTrustedPanelSender(event);
+    if (url !== "https://developer.spotify.com/dashboard") {
+      throw new Error("Blocked external URL");
+    }
+    return shell.openExternal(url);
+  });
+  ipcMain.on("panel:close", event => {
+    if (!isTrustedPanelSender(event)) return;
     if (musicPanel && !musicPanel.isDestroyed()) musicPanel.close();
   });
 }
@@ -198,6 +261,12 @@ function setupIpc() {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // Moodify needs no OS permissions. Deny all renderer permission requests.
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false);
+  });
+  session.defaultSession.setPermissionCheckHandler(() => false);
+
   app.dock?.hide();
   setupIpc();
   createTray();
